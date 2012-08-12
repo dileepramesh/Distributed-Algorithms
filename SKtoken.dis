@@ -1,0 +1,234 @@
+#
+# This Class implements the Suzuki-Kasami Distributed Algorithm for Fast
+# Mutual Exclusion
+#
+
+import time
+import random
+
+class SKtoken (DistProcess):
+    # 
+    # Setup routine for the Process. 
+    # ps - represents the set of process excluding the current process
+    # id - represents the index of the current process. pid is used to 
+    #      easily index the requests and token arrays.
+    # token_holder - Indicates the process which holds the token initially
+    # req_count - represents the number of pending requests for this process
+    #
+    def setup (ps, id, token_holder, req_count):
+        timestamp = 0
+        process_id = id
+        process_list = ps
+        num_reqs = req_count
+        requests = dict((p, 0) for p in process_list)
+        last = dict((p, 0) for p in process_list)
+        pending_q = []
+        token_present = False
+        token_held = False
+
+        # Assign token to the token holder
+        if id == token_holder:
+            token_present = True
+
+        output("Setup: Process ID: %r " %self + "Process Index: " + str(process_id) + " Token Present: " + str(token_present))
+    
+    # 
+    # This routine contains the request CS, CS entry and exit CS sections
+    #
+    def cs (task):
+
+        --start
+
+        # Request CS
+        output("Process " + str(process_id) + "(%r)" %self + " requesting CS")
+
+        #
+        # Pseudocode:
+        # if (not token):
+        #     req[i] := req[i] + 1
+        #     Send(i, req[i]) to all
+        # await(token)
+        #
+
+        # Increment our timestamp
+        timestamp = timestamp + 1
+        requests[self] = timestamp
+
+        if token_present == False:
+            # 
+            # Send the request message to all the processes with the current
+            # timestamp
+            #
+            try:
+                output("Process " + str(process_id) + "(%r)" %self + " sending request with TS = " + str(timestamp))
+                send(Request(timestamp), process_list)
+            except(Exception):
+                return
+            
+            # Wait for the token
+            --reply
+            await (token_present == True)
+
+        output("Process " + str(process_id) + "(%r)" %self + " got the Token")
+        
+        # Remember that we got the token
+        token_held = True
+
+        # Critical Section. Just invoke the CS task passed to us.
+        --cs
+        task()
+        
+        # Release CS
+        --release
+
+        #
+        # Pseudocode:
+        # last[j] := req[j]
+        # for all k ≠ j: k not in Q and req[k] = last[k] + 1, append k to Q
+        # if Q not empty, send (last, Q) to head(Q)
+        #
+
+        # Update the timestamp and release the token
+        output("Process " + str(process_id) + "(%r)" %self + " exiting CS")
+        last[self] = requests[self]
+        token_held = False
+
+        #
+        # For each process which is not already in the pending queue and whose
+        # request timestamp is one more than its last CS timestamp, add it to
+        # the pending queue
+        #
+        for i in process_list:
+            try:
+                if (not (i in pending_q) and requests[i] == last[i] + 1):
+                    pending_q.append(i)
+            except(Exception):
+                continue
+
+        #
+        # If the pending queue is not empty, send 'last' and pending queue to
+        # the process at the head of the queue
+        # 
+        if len(pending_q) > 0:
+            try:
+                token_receiver = pending_q.pop()
+                output("Process " + str(process_id) + "(%r)" %self + " sending token to process: %r" %token_receiver)
+                token_present = False
+                send(Token(last, pending_q), token_receiver)
+            except(Exception):
+                return
+
+    # This routine is invoked when a request is received by this process
+    def OnRequest (timestamp):
+
+        output("Process " + str(process_id) + "(%r)" %self + " received request from Process %r" %_source + " with timestamp " + str(timestamp))
+
+        #
+        # Pseudocode
+        # req[k] := max(req[k], ts_k)
+        # if (have token) and (not in CS)
+        #     send(last, Q) to sender
+        #
+
+        # Update our request list with the latest timestamp
+        requests[_source] = max(requests[_source], timestamp) 
+        
+        #
+        # If we have the token but are not currently using it, check
+        # which process has to get the token next and send the token
+        # to it (Same as release section)
+        #
+        if token_present == True and token_held == False:
+            try:
+                output("Process " + str(process_id) + "(%r)" %self + " sending token to process: %r" %_source)
+                token_present = False
+                send(Token(last, pending_q), _source)
+            except(Exception):
+                return
+
+    # This routine is invoked when we get the token
+    def OnToken (received_last, received_q):
+        token_present = True
+        last = received_last
+        pending_q = received_q
+
+    # Main program for the process
+    def main ():
+        def cs_task():
+            output("Process " + str(process_id) + "(%r)" %self + " in CS")
+
+        for i in range(num_reqs):
+            cs(cs_task)
+            # Sleep for sometime before issuing the next request
+            r = random.randrange(0, 1)
+            time.sleep(r)
+
+        output("Process " + str(process_id) + "(%r)" %self + " terminating")
+
+        # This is to let other processes to send a message to us
+        await (False)
+
+#
+# Driver Program
+#
+def main():
+     
+    # 
+    # Get the configuration parameters from the user. Reset to default
+    # values if invalid input is entered.
+    #
+    try:
+        if len(sys.argv) == 3:
+            nprocs = int(sys.argv[1])
+            nreqs = int(sys.argv[2])
+            if (nprocs <= 0 or nreqs <= 0):
+                print("Invalid input. Resetting to default parameters.")
+                nprocs = 10
+                nreqs = 50
+        else:
+            print("Invalid input. Resetting to default parameters.")
+            nprocs = 10
+            nreqs = 50
+    except(ValueError, IndexError):
+        print("Invalid input. Resetting to default parameters.")
+        nprocs = 10
+        nreqs = 50
+
+    use_channel("tcp")
+
+    # Create the process list
+    ps = createprocs(SKtoken, nprocs)
+
+    # Assign the requests randomly to processes
+    preqs = []
+    for i in range(nprocs):
+        preqs.append(0)
+
+    count = nreqs
+    while (count > 0) :
+        if (nprocs > 1):
+            p = random.randint(0, nprocs - 1)
+        else:
+            p = 0
+        preqs[p] = preqs[p] + 1
+        count = count - 1
+
+    # 
+    # Setup the individual processes. 'r' indicates which proces
+    # gets the token initially. Setup each process's process list
+    # in the order i+1 - end and 0 - i.
+    #
+    pid = 0
+    plist = list(ps)
+    if (nprocs > 1):
+        r = random.randrange(0, nprocs - 1)
+    else:
+        r = 0
+
+    for pid, p in enumerate(list(ps)):
+        setupprocs({p}, [(plist[pid + 1 : ] + plist[0 : pid]), pid, r, preqs[pid]])
+
+    # Start the processes
+    startprocs(ps)
+
+# End of File
