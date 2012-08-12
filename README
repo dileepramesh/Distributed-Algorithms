@@ -1,0 +1,42 @@
+
+Name: Dileep Ramesh
+ID: 108028179
+Email: dramesh@cs.stonybrook.edu
+
+This submission includes the code for the following 2 algorithms:
+
+1. Ricart-Agrawala's token-based algorithm
+2. Suzuki-Kasami's token-based algorithm
+
+The following files have been included:
+
+1. RAtoken.py - Implements Ricart-Agrawala's token based algorithm
+2. SKtoken.py - Implements Suzuki-Kasami's token based algorithm
+3. RAtoken.log - Contains sample output from running algorithm (3)
+4. SKtoken.log - Contains sample output from running algorithm (4)
+
+How to run the programs
+-----------------------
+
+Algorithm (1)
+    "python3.2 -m distalgo.runtime --logfile RAtoken.log RAtoken.dis 10 200"
+
+Algorithm (2)
+    "python3.2 -m distalgo.runtime --logfile SKtoken.log SKtoken.dis 10 200"
+
+Algorithm Description
+---------------------
+
+ - RAtoken.dis and SKtoken.dis files contains the following functions:
+   - Global main() method
+     - Gets the 'n' and 'm' parameters from the user and calls setup() routine for each process
+     - Starts the processes
+   - RAtoken Class
+     - setup(): Takes the list of processes, request count for the process and
+                assigns token to the process based on a passed flag
+     - cs(): Contains the CS request, entry and exit code blocks. Also
+             contains code blocks to handle requests from other processes
+     - main(): Contains the CS task that is passed to cs(). This will loop 
+               through the list of requests and call cs() till all the requests 
+               are exhausted.
+
